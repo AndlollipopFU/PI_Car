@@ -6,7 +6,7 @@ import time
 class Maps(object):
     def __init__(self, dist_matrix, mag_matrix):
         self.Setup(dist_matrix)
-        self.mag_matrix = mag_matrix
+        self.mag_matrix = np.array(mag_matrix)
         return
 
     def dijkstra(self, A, startpoint):
@@ -58,13 +58,14 @@ class Maps(object):
 
 
 if __name__ == "__main__":
-    dist_matrix = [[0, 6, -1, -1, -1, 5, 8],
-                   [6, 0, 10, -1, -1, -1, -1],
-                   [-1, 10, 0, 4, -1, -1, 3],
-                   [-1, -1, 4, 0, 7, -1, -1],
-                   [-1, -1, 5, 7, 0, 2, 4],
+    dist_matrix = [[0, 6, -1, -1, -1, 5, -1],
+                   [6, 0, 8, -1, -1, -1, -1],
+                   [-1, 8, 0, 4, -1, -1, 3],
+                   [-1, -1, 4, 0, 7, -1, 2],
+                   [-1, -1, -1, 7, 0, 2, 4],
                    [5, -1, -1, -1, 2, 0, -1],
-                   [8, -1, 3, -1, 4, -1, 0]]
+                   [-1, -1, 3, 2, 4, -1, 0]]
+    point_name = ('A', 'B', 'C', 'D', 'E', 'F', 'G')
     dist_matrix = np.array(dist_matrix)
     Map = Maps(dist_matrix, dist_matrix)
     print('Distance Matrix:\n', Map.dist_matrix)
@@ -72,5 +73,6 @@ if __name__ == "__main__":
     print('Best Path:\n', Map.best_path)
     i = 3
     j = 0
-    print('From %i to %i,distance:%i' % (i, j, Map.Get_Best(i, j)[0]))
-    print('Path: ', Map.Get_Best(i, j)[1])
+    print('From %s to %s,distance:%i' %
+          (point_name[i], point_name[j], Map.Get_Best(i, j)[0]))
+    print('Path: ', [point_name[item] for item in Map.Get_Best(i, j)[1]])
