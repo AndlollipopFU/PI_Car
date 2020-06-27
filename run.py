@@ -81,8 +81,16 @@ def Get_Task():
     返回值为任务ID和到达地点（int）
     不接受参数
     '''
-    # TODO Acquiring Tasks
-    pass
+    while(True):
+        try:
+            gettask_url = 'http://' + ip_addr + '/task_api/get_task'
+            gettask_reqres = requests.get(gettask_url)
+            if gettask_reqres.status_code == 200:
+                task = json.loads(gettask_reqres.text)
+                if task['status'] == True:
+                    return task['task_id'], task['dest']
+        except Exception as e:
+            pass
 
 
 def Finish_Task():
@@ -90,26 +98,69 @@ def Finish_Task():
     接受参数为任务ID
     返回值自定
     '''
-    # TODO Tasks Response
-    pass
+    while(True):
+        try:
+            taskid_json = json.dumps({'task_id': taskid})
+            finishtask_url = 'http://' + ip_addr + '/task_api/finish_task'
+            finishtask_reqres = requests.post(finishtask_url, taskid_json)
+            if finishtask_reqres.status_code == 200:
+                break
+        except Exception as e:
+            pass
 
 
 def Camera():
     cap = cv2.VideoCapture(0)
     distance_data = 15.0
     motor_speed = 0
+    address = (ip_addr, 2020)
+    tcpClientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     while(True):
-        ret, frame = cap.read()
-        if ret:
-            frame = cv2.flip(frame, 0)
-            if queue2.empty():
-                queue2.put(frame)
-            if not queue3.empty():
-                distance_data = queue3.get()
-            if not queue4.empty():
-                motor_speed = queue4.get()
-            # TODO Vedio Transmission
-            # return
+        try:
+            tcpClientSocket.connect(address)
+        except Exception as e:
+            continue
+        while(True):
+            ret, frame = cap.read()
+            if ret:
+                frame = cv2.flip(frame, 0)
+                if queue2.empty():
+                    queue2.put(frame)
+                if not queue3.empty():
+                    distance_data = queue3.get()
+                if not queue4.empty():
+                    motor_speed = queue4.get()
+                try:
+                    _, jpg_data = cv2.imencode('.jpg', frame)
+                    pkg_num = math.ceil(jpg_data.shape[0]/pkg_size)
+                    temp = np.array(
+                        [pkg_num, jpg_data.shape[0]-pkg_size*(pkg_num-1)], dtype=np.uint16).tostring()
+                    data = begin_msg+temp
+                    tcpClientSocket.send(data)
+                    for i in range(pkg_num-1):
+                        data = middle_msg + \
+                            jpg_data[pkg_size*i:pkg_size*(i+1)].tostring()
+                        tcpClientSocket.send(data)
+                    data = end_msg + \
+                        jpg_data[pkg_size*(pkg_num-1)
+                                           :jpg_data.shape[0]].tostring()
+                    tcpClientSocket.send(data)
+                    detection_res, _ = tcpClientSocket.recvfrom(512)
+                    try:
+                        detection_res = json.loads(
+                            str(detection_res, encoding='utf-8'))
+                        for detection in detection_res['detections']:
+                            ids, x1, y1, x2, y2 = detection[0], detection[1], detection[2], detection[3], detection[4]
+                            if abs((x1+x2)//2 - 320) < 20:
+                                if queue.empty():
+                                    queue.put(1)
+                    except Exception as e:
+                        pass
+                    end_time = time.perf_counter()
+                except Exception as e:
+                    tcpClientSocket.close()
+                    break
+                # return
 
 
 def Distance_Data():
@@ -139,10 +190,8 @@ def Distance_Data():
 def Magnet_Data():
     print('Magnet PID:%i' % os.getpid())
     current_target = -1
-    speed_left = 1024
-    speed_right = 512
     flag = 0
-    time_stop = 1
+    time_stop = 0.5
     while(True):
         if not queue.empty():
             flag = queue.get()
@@ -162,6 +211,7 @@ def Magnet_Data():
                     m1.Break()
                     current_target = -1
                     continue
+                datas = mag.Get_Data()
                 count_left += spinleft.read_Data() ^ left_stat
                 count_right += spinright.read_Data() ^ right_stat
                 left_stat = spinleft.read_Data()
@@ -172,30 +222,16 @@ def Magnet_Data():
                     count_left = count_right = 0
                     if queue4.empty():
                         queue4.put(sped)
+                    start = time.time()
+                print('Magnet angle:%f' % datas)
+                if datas - current_target > 3:  # 偏右
+                    speed_left = 0
+                    speed_right = 768
+                elif current_target - datas > 3:  # 偏左
                     speed_right = 0
-                    if time.time() - start > time_stop+0.15:
-                        speed_right = 512
-                        start = time.time()
-                    # print('Left Count:%i Right Count:%i' %
-                    #       (count_left, count_right))
-                    # if abs(count_left - count_right) > 3:
-                    #     if count_left > count_right:
-                    #         speed_left = speed_left + 20 if speed_left <= 1004 else speed_left
-                    #     elif count_left < count_right:
-                    #         speed_left = speed_left - 20 if speed_left >= 532 else speed_left
-                    # print('Left Speed:%i Right Speed%i' %
-                    #       (speed_left, speed_right))
-                    # count_left = count_right = 0
-
-                #print('Magnet angle:%f' % datas)
-                # if datas - current_target > 3:  # 偏右
-                #     speed_left = 0
-                #     speed_right = 768
-                # elif current_target - datas > 3:  # 偏左
-                #     speed_right = 0
-                #     speed_left = 768
-                # else:
-                #     speed_left = speed_right = 768
+                    speed_left = 768
+                else:
+                    speed_left = speed_right = 768
                 m1.Accelerate(speed_left, speed_right)
             elif current_target == -1:
                 #m1.Accelerate(speed_left, speed_right)
@@ -255,34 +291,21 @@ def Get_Init():
 
 if __name__ == "__main__":
     print('Main PID:%i' % os.getpid())
-    # try:
-    #     while(1):
-    #         startpoint = Get_Init()
-    #         print(startpoint)
-    # except KeyboardInterrupt:
-    #     m1.Accelerate(1024, 512)
-    #     time.sleep(0.8)
-    #     m1.Break()
     startpoint = Get_Init()
     p = mt.Pool(3)
     p.apply_async(func=Magnet_Data)
     p.apply_async(func=Distance_Data)
     p.apply_async(func=Camera)
-    # videowriter = cv2.VideoWriter('test2.avi', cv2.VideoWriter_fourcc(
-    #     'I', '4', '2', '0'), 30, (640, 480))
     flag = 0
     while(True):
         try:
-            #taskid, endpoint = Get_Task()
-            endpoint = 2
+            taskid, endpoint = Get_Task()
             taskpath = Map.Get_Best(startpoint, endpoint)[1]
-            print(taskpath)
             startpoint = endpoint
             for i in range(len(taskpath) - 1):
                 st = taskpath[i]
                 ed = taskpath[i+1]
                 path_mag = Map.mag_matrix[st, ed]
-                print(path_mag)
                 while(queue1.full()):
                     m1.Break()
                     pass
